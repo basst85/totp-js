@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time Based One Time Password (TOTP) generator</title>
+<script type="text/javascript" src="jquery-3.1.0.min.js"></script>
+<script type="text/javascript" src="sha.js"></script>
+
+<style type='text/css'> 
+	body {
+		font-family:verdana;
+		font-size:14px;
+	}
+</style>
+
+<script type="text/javascript">
+//JavaScript implementation of the Time-based One-time Password Algorithm, as described in the TOTP RFC Draft (http://tools.ietf.org/id/draft-mraihi-totp-timebased-06.html).
+
+	function generateBase32Secret()
+	{
+		var base32chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		var secret = "";
+		 
+		for( var i=0; i < 16; i++ ){
+			secret += base32chars.charAt(Math.floor(Math.random() * base32chars.length));
+		}
+
+		return secret;
+	}
+
+	function dec2hex(s) { 
+		return (s < 15.5 ? '0' : '') + Math.round(s).toString(16); 
+	}
+
+	function hex2dec(s) { 
+		return parseInt(s, 16); 
+	}
+
+	function base32tohex(base32) {
+		var base32chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		var bits = "";
+		var hex = "";
+
+		for (var i = 0; i < base32.length; i++) {
+			var val = base32chars.indexOf(base32.charAt(i).toUpperCase());
+			bits += leftpad(val.toString(2), 5, '0');
+		}
+
+		for (var i = 0; i+4 <= bits.length; i+=4) {
+			var chunk = bits.substr(i, 4);
+			hex = hex + parseInt(chunk, 2).toString(16) ;
+		}
+		return hex;
+	}
+		
+	function leftpad(str, len, pad) {
+		if (len + 1 >= str.length) {
+			str = Array(len + 1 - str.length).join(pad) + str;
+		}
+		return str;
+	}
+
+	function generateTOTP(){
+		//Using jsSHA-2.2.0 https://github.com/Caligatio/jsSHA
+		var jsSHAobj = new jsSHA("SHA-1", "HEX");
+	 
+		var secret = $('#secret').val();
+		var epoch = Math.round(new Date().getTime() / 1000.0);
+		var time = leftpad(dec2hex(Math.floor(epoch / 30)), 16, '0');
+		
+		//Hashed Message Authentication Code (HMAC) with the crypto hash algorithm SHA-1
+		jsSHAobj.setHMACKey(base32tohex(secret), "HEX");
+		jsSHAobj.update(time);
+		var HMAC = jsSHAobj.getHMAC("HEX");
+		
+		//Read last 4 bits (1 character) from HMAC string to determine offset
+		var lastHMACcharHex = HMAC.substr(-1);
+		//Convert character to decimal
+		var lastHMACcharDec = hex2dec(lastHMACcharHex);
+		//Read the next 31-bits, with lastHMACcharDec value as offset
+		//Offset*2 to convert nibble offset to byte offset
+		var TOTP = (hex2dec(HMAC.substr(lastHMACcharDec * 2, 8)) & hex2dec('7fffffff')) + '';
+		//Get last 6 digits of the decimal string
+		TOTP = TOTP.substr(TOTP.length - 6, 6);
+		
+		//Show code on page
+		$('#totp').html(TOTP);
+	}
+
+	function updateTimer()
+	{
+		var epoch = Math.round(new Date().getTime() / 1000.0);
+		var countdown = 30 - (epoch % 30);
+		$('#countdown').html(countdown);
+		if (epoch % 30 == 0){
+			generateTOTP()
+		};
+	}
+
+	$(function () {
+		$('#secret').val(generateBase32Secret());
+		$('#otpauthQr').attr('src', 'https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=300x300&chld=M|0&cht=qr&chl=otpauth://totp/TOTP%20test%3Fsecret%3D' + $('#secret').val());
+		generateTOTP();
+		setInterval(updateTimer, 1000);
+	});
+
+</script>
+</head>
+<body>
+	<center>
+		<h1><b>Time Based One Time Password (TOTP)</b></h1>
+		<br/><br/>
+		<b>Base-32 secret: </b>
+		<br/>
+		<input type="text" size="30" name="secret" id="secret" />
+		<br/>
+		<b>Google Authenticator QR-code:</b>
+		<br/>
+		<img id="otpauthQr" src="" />
+		<br/><br/>
+		<b>TOTP code:</b>
+		<br/>
+		<div id="totp" style="font-size:50px;"></div>
+		<br/><br/>
+		<b>Updating code in:</b>
+		<div id="countdown" style="font-size:30px;"></div>
+	</center>
+</body>
